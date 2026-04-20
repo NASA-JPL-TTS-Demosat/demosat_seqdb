@@ -1,0 +1,47 @@
+name: Update Directory Tree
+
+on:
+  push:
+    branches:
+      - main  # Or your default branch
+  workflow_dispatch: # Allows manual triggering
+
+permissions:
+  contents: write  # Crucial for pushing back to the repo
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # Fetches all history for all branches
+
+      - name: Generate Tree
+        run: |
+          sudo apt-get install -y tree
+          tree > tree_output.txt
+
+      - name: Deploy to gh-pages
+        run: |
+          # Configure Git
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          
+          # Check if gh-pages exists locally, if not create it
+          if git fetch origin gh-pages; then
+            git checkout gh-pages
+          else
+            git checkout --orphan gh-pages
+            git rm -rf . # Clean the new orphan branch
+          fi
+          
+          # Move the generated file into the branch
+          git checkout main -- tree_output.txt
+          mv tree_output.txt index.html # Rename to index.html for GH Pages visibility
+          
+          # Commit and Push
+          git add index.html
+          git commit -m "Update directory tree"
+          git push origin gh-pages --force
