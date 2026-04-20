@@ -25,23 +25,26 @@ jobs:
 
       - name: Deploy to gh-pages
         run: |
-          # Configure Git
+          # 1. Save the tree output to a temp location so it survives branch switching
+          cp tree_output.txt /tmp/tree_output.txt
+
+          # 2. Configure Git identity
           git config --global user.name "github-actions[bot]"
           git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
           
-          # Check if gh-pages exists locally, if not create it
+          # 3. Handle the branch switch
           if git fetch origin gh-pages; then
             git checkout gh-pages
           else
+            # Create a clean slate if the branch doesn't exist yet
             git checkout --orphan gh-pages
-            git rm -rf . # Clean the new orphan branch
+            git rm -rf .
           fi
           
-          # Move the generated file into the branch
-          git checkout main -- tree_output.txt
-          mv tree_output.txt index.html # Rename to index.html for GH Pages visibility
+          # 4. Bring the file back and rename it
+          cp /tmp/tree_output.txt index.html
           
-          # Commit and Push
+          # 5. Commit and Push
           git add index.html
           git commit -m "Update directory tree"
           git push origin gh-pages --force
