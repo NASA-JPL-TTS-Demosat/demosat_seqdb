@@ -27,9 +27,11 @@ on:
     tags:
       - '*'  # This will trigger the workflow when any tag is pushed
 
-# Add permissions to allow GitHub Actions to push to gh-pages
+# Add permissions to allow GitHub Actions to push to gh-pages and comment on PRs
 permissions:
   contents: write  # This is required to push to gh-pages
+  issues: write    # This is required to comment on PRs (PRs are treated as issues)
+  pull-requests: write # This is required for PR-specific operations
 
 jobs:
   generate-simple-reports:
@@ -45,6 +47,24 @@ jobs:
           fetch-depth: 0
           # Use the built-in token with write permissions
           token: ${{ github.token }}
+      
+      # Load configuration values
+      - name: Load Configuration
+        id: load-config
+        run: |
+          # Install PyYAML if needed
+          pip install pyyaml
+          
+          # Extract values from config if the file exists
+          if [ -f ".github/seqdb-config.yml" ]; then
+            PYTHON_VERSION=$(python -c "import yaml; print(yaml.safe_load(open('.github/seqdb-config.yml')).get('environment', {}).get('python_version', '3.11'))")
+          else
+            PYTHON_VERSION="3.11"
+          fi
+          
+          # Set outputs
+          echo "python_version=$PYTHON_VERSION" >> $GITHUB_OUTPUT
+          echo "Using Python version: $PYTHON_VERSION"
       
       - name: Set up Python
         uses: actions/setup-python@v5
