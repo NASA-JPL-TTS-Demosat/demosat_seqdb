@@ -27,6 +27,10 @@ on:
     tags:
       - '*'  # This will trigger the workflow when any tag is pushed
 
+# Add permissions to allow GitHub Actions to push to gh-pages
+permissions:
+  contents: write  # This is required to push to gh-pages
+
 jobs:
   generate-simple-reports:
     name: Generate Simple Sequence Reports
@@ -39,11 +43,13 @@ jobs:
           # For PRs, use the PR head SHA; for tag pushes, the default ref is fine
           ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || '' }}
           fetch-depth: 0
+          # Use the built-in token with write permissions
+          token: ${{ github.token }}
       
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.11'
+          python-version: ${{ steps.load-config.outputs.python_version }}
       
       - name: Install dependencies
         run: |
