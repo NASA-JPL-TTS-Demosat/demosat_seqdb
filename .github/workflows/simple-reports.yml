@@ -1,0 +1,194 @@
+name: Generate Simple Sequence Reports
+
+# ============================================================================
+# WHAT THIS WORKFLOW DOES:
+# ============================================================================
+# This workflow generates simple HTML reports for all commits and tags:
+#
+# 1. For ANY commit:
+#    - Creates reports/commits/[commit_hash]/simple_commit_report.html
+#    - Lists sequences in alphabetical order
+#    - Indicates if the commit has a tag or not
+#
+# 2. For TAGGED commits only:
+#    - Also creates reports/tags/[tag_name]/simple_tag_report.html
+#    - Lists sequences in reverse alphabetical order
+#    - Copies the commit report to the tag directory for reference
+#
+# All reports are published to the gh-pages branch for easy access.
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+    branches:
+      - main
+      - master
+  push:
+    tags:
+      - '*'  # This will trigger the workflow when any tag is pushed
+
+jobs:
+  generate-simple-reports:
+    name: Generate Simple Sequence Reports
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          # For PRs, use the PR head SHA; for tag pushes, the default ref is fine
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || '' }}
+          fetch-depth: 0
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+      
+      - name: Generate Simple Reports
+        id: generate-reports
+        run: |
+          # Get commit hash
+          COMMIT_HASH=$(git rev-parse HEAD)
+          echo "commit_hash=$COMMIT_HASH" >> $GITHUB_OUTPUT
+          
+          # Get tag (if any)
+          TAG=$(git describe --tags --exact-match $COMMIT_HASH 2>/dev/null || echo "")
+          if [ -n "$TAG" ]; then
+            echo "tag=$TAG" >> $GITHUB_OUTPUT
+            echo "has_tag=true" >> $GITHUB_OUTPUT
+          else
+            echo "has_tag=false" >> $GITHUB_OUTPUT
+          fi
+          
+          # Create reports directory
+          mkdir -p reports
+          
+          # Run the report generation script
+          python scripts/generate_simple_reports.py --output-dir reports
+      
+      - name: Upload Reports as Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: simple-sequence-reports-${{ github.sha }}
+          path: reports/
+          retention-days: 30
+      
+      - name: Publish Reports to gh-pages
+        run: |
+          # Configure git
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          
+          # Create/switch to gh-pages branch
+          if git fetch origin gh-pages; then
+            git checkout gh-pages
+          else
+            git checkout --orphan gh-pages
+            git rm -rf . || true
+          fi
+          
+          # Get commit hash and tag from previous step
+          COMMIT_HASH="${{ steps.generate-reports.outputs.commit_hash }}"
+          TAG="${{ steps.generate-reports.outputs.tag }}"
+          HAS_TAG="${{ steps.generate-reports.outputs.has_tag }}"
+          
+          # Create directory structure and copy reports
+          mkdir -p "commits/${COMMIT_HASH}"
+          cp -r reports/commits/${COMMIT_HASH}/* "commits/${COMMIT_HASH}/"
+          
+          if [ "$HAS_TAG" = "true" ]; then
+            mkdir -p "tags/${TAG}"
+            cp -r reports/tags/${TAG}/* "tags/${TAG}/"
+          fi
+          
+          # Update index page with links to reports
+          cat > index.html <<EOF
+          <!DOCTYPE html>
+          <html>
+          <head>
+              <title>Sequence Database Reports</title>
+              <style>
+                  body { font-family: Arial, sans-serif; margin: 40px; }
+                  h1 { color: #333; }
+                  .section { margin-bottom: 30px; }
+                  .report-link { margin: 10px 0; }
+                  .timestamp { color: #666; font-size: 0.8em; margin-top: 20px; }
+              </style>
+          </head>
+          <body>
+              <h1>Sequence Database Reports</h1>
+              <p>Last updated: $(date)</p>
+              
+              <div class="section">
+                  <h2>Latest Reports</h2>
+                  <div class="report-link">
+                      <a href="commits/${COMMIT_HASH}/simple_commit_report.html">Commit Report: ${COMMIT_HASH}</a>
+                  </div>
+          EOF
+          
+          if [ "$HAS_TAG" = "true" ]; then
+            cat >> index.html <<EOF
+                  <div class="report-link">
+                      <a href="tags/${TAG}/simple_tag_report.html">Tag Report: ${TAG}</a>
+                  </div>
+          EOF
+          fi
+          
+          cat >> index.html <<EOF
+              </div>
+              
+              <p class="timestamp">Generated by GitHub Actions</p>
+          </body>
+          </html>
+          EOF
+          
+          # Commit and push
+          git add .
+          git commit -m "Add simple reports for commit ${COMMIT_HASH} $([ -n "$TAG" ] && echo "and tag ${TAG}")" || true
+          git push origin gh-pages
+          
+          # Switch back
+          git checkout -
+      
+      - name: Comment on PR with Report Links
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const commitHash = '${{ steps.generate-reports.outputs.commit_hash }}';
+            const hasTag = '${{ steps.generate-reports.outputs.has_tag }}' === 'true';
+            const tag = '${{ steps.generate-reports.outputs.tag }}';
+            const repo = context.repo;
+            
+            let comment = `## 📊 Simple Sequence Reports Generated
+            
+            **Commit:** \`${commitHash}\`
+            
+            ### 📥 View Reports
+            
+            - [View Commit Report](https://${repo.owner}.github.io/${repo.repo}/commits/${commitHash}/simple_commit_report.html)
+            `;
+            
+            if (hasTag) {
+              comment += `- [View Tag Report](https://${repo.owner}.github.io/${repo.repo}/tags/${tag}/simple_tag_report.html)
+              
+              **Tag:** \`${tag}\`
+              `;
+            } else {
+              comment += `
+              
+              > ℹ️ This commit is not tagged. Only commit reports were generated.
+              `;
+            }
+            
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: repo.owner,
+              repo: repo.repo,
+              body: comment
+            });
