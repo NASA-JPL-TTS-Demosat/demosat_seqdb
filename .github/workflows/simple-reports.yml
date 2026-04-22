@@ -82,20 +82,42 @@ jobs:
           COMMIT_HASH=$(git rev-parse HEAD)
           echo "commit_hash=$COMMIT_HASH" >> $GITHUB_OUTPUT
           
-          # Get tag (if any)
-          TAG=$(git describe --tags --exact-match $COMMIT_HASH 2>/dev/null || echo "")
+          # Check if this is a tag push event
+          if [[ "${{ github.event_name }}" == "push" && "${{ github.ref }}" == refs/tags/* ]]; then
+            # For tag push events, use the tag from the ref
+            TAG="${{ github.ref_name }}"
+            echo "Event is a tag push: $TAG"
+          else
+            # For PR events or other pushes, check if the commit has a tag
+            TAG=$(git describe --tags --exact-match $COMMIT_HASH 2>/dev/null || echo "")
+            echo "Checking for tag on commit: $COMMIT_HASH"
+          fi
+          
+          # Set outputs based on tag presence
           if [ -n "$TAG" ]; then
+            echo "Tag found: $TAG"
             echo "tag=$TAG" >> $GITHUB_OUTPUT
             echo "has_tag=true" >> $GITHUB_OUTPUT
           else
+            echo "No tag found"
             echo "has_tag=false" >> $GITHUB_OUTPUT
           fi
           
           # Create reports directory
           mkdir -p reports
           
-          # Run the report generation script
-          python scripts/generate_simple_reports.py --output-dir reports
+          # Run the report generation script with tag information
+          if [ -n "$TAG" ]; then
+            echo "Running script with tag: $TAG"
+            python scripts/generate_simple_reports.py --output-dir reports --commit "$COMMIT_HASH" --tag "$TAG"
+          else
+            echo "Running script without tag"
+            python scripts/generate_simple_reports.py --output-dir reports --commit "$COMMIT_HASH"
+          fi
+          
+          # Print report paths for debugging
+          echo "Generated reports in:"
+          find reports -type f | sort
       
       - name: Upload Reports as Artifacts
         uses: actions/upload-artifact@v4
@@ -122,6 +144,17 @@ jobs:
           COMMIT_HASH="${{ steps.generate-reports.outputs.commit_hash }}"
           TAG="${{ steps.generate-reports.outputs.tag }}"
           HAS_TAG="${{ steps.generate-reports.outputs.has_tag }}"
+          
+          # Debug information
+          echo "Commit hash: $COMMIT_HASH"
+          echo "Tag: $TAG"
+          echo "Has tag: $HAS_TAG"
+          
+          # Double-check tag existence (as a fallback)
+          if [ "$HAS_TAG" != "true" ] && [ -n "$TAG" ]; then
+            echo "Tag was detected but has_tag is not true, fixing..."
+            HAS_TAG="true"
+          fi
           
           # Create directory structure and copy reports
           mkdir -p "commits/${COMMIT_HASH}"

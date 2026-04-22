@@ -38,7 +38,8 @@ def get_commit_tag(commit_hash=None):
     """Get tag for the specified commit, if any."""
     if commit_hash is None:
         commit_hash = "HEAD"
-        
+    
+    # First check if there's an exact tag match
     try:
         result = subprocess.run(
             ["git", "describe", "--tags", "--exact-match", commit_hash],
@@ -47,9 +48,18 @@ def get_commit_tag(commit_hash=None):
         )
         if result.returncode == 0:
             return result.stdout.strip()
-        return None
     except subprocess.CalledProcessError:
-        return None
+        pass
+    
+    # If no exact match, check if we're in a GitHub Actions environment with a tag push
+    if os.environ.get("GITHUB_EVENT_NAME") == "push" and os.environ.get("GITHUB_REF", "").startswith("refs/tags/"):
+        # Extract tag name from GITHUB_REF (format: refs/tags/TAG_NAME)
+        tag = os.environ.get("GITHUB_REF").replace("refs/tags/", "")
+        print(f"Using tag from GitHub Actions environment: {tag}")
+        return tag
+    
+    # No tag found
+    return None
 
 
 def get_all_sequences(sequence_dir):
@@ -161,13 +171,23 @@ def main():
     parser.add_argument("--output-dir", default="reports", help="Base directory for reports")
     parser.add_argument("--sequence-dir", default="onboard_sequences", help="Directory containing sequence files")
     parser.add_argument("--commit", help="Specific commit hash to report on (default: current HEAD)")
+    parser.add_argument("--tag", help="Specific tag to report on (overrides automatic tag detection)")
     args = parser.parse_args()
     
     # Get commit hash
     commit_hash = args.commit if args.commit else get_current_commit_hash()
+    print(f"Generating reports for commit: {commit_hash}")
     
     # Get tag (if any)
-    tag = get_commit_tag(commit_hash)
+    if args.tag:
+        tag = args.tag
+        print(f"Using provided tag: {tag}")
+    else:
+        tag = get_commit_tag(commit_hash)
+        if tag:
+            print(f"Detected tag: {tag}")
+        else:
+            print("No tag detected for this commit")
     
     # Get sequences
     sequence_dir = Path(args.sequence_dir)
