@@ -39,7 +39,24 @@ def get_commit_tag(commit_hash=None):
     if commit_hash is None:
         commit_hash = "HEAD"
     
-    # First check if there's an exact tag match
+    print(f"Looking for tags on commit: {commit_hash}")
+    
+    # Method 1: Use git tag --points-at (most reliable)
+    try:
+        result = subprocess.run(
+            ["git", "tag", "--points-at", commit_hash],
+            capture_output=True,
+            text=True,
+            check=True
+        )
+        tags = result.stdout.strip().split('\n')
+        if tags and tags[0]:
+            print(f"Found tag(s) using git tag --points-at: {tags}")
+            return tags[0]  # Return the first tag if multiple exist
+    except subprocess.CalledProcessError as e:
+        print(f"Error checking tags with git tag --points-at: {e}")
+    
+    # Method 2: Try exact match with git describe
     try:
         result = subprocess.run(
             ["git", "describe", "--tags", "--exact-match", commit_hash],
@@ -47,18 +64,26 @@ def get_commit_tag(commit_hash=None):
             text=True
         )
         if result.returncode == 0:
-            return result.stdout.strip()
-    except subprocess.CalledProcessError:
-        pass
+            tag = result.stdout.strip()
+            print(f"Found tag using git describe --exact-match: {tag}")
+            return tag
+    except subprocess.CalledProcessError as e:
+        print(f"Error checking tags with git describe: {e}")
     
-    # If no exact match, check if we're in a GitHub Actions environment with a tag push
+    # Method 3: Check GitHub Actions environment variables
     if os.environ.get("GITHUB_EVENT_NAME") == "push" and os.environ.get("GITHUB_REF", "").startswith("refs/tags/"):
         # Extract tag name from GITHUB_REF (format: refs/tags/TAG_NAME)
         tag = os.environ.get("GITHUB_REF").replace("refs/tags/", "")
         print(f"Using tag from GitHub Actions environment: {tag}")
         return tag
     
-    # No tag found
+    # Method 4: Check if tag was explicitly provided via environment variable
+    if os.environ.get("GITHUB_TAG"):
+        tag = os.environ.get("GITHUB_TAG")
+        print(f"Using tag from GITHUB_TAG environment variable: {tag}")
+        return tag
+    
+    print("No tag found for this commit")
     return None
 
 
@@ -196,22 +221,30 @@ def main():
     # Create base output directory
     base_output_dir = Path(args.output_dir)
     
-    # Always create commit report
+    # Create commit report directory
     commit_output_dir = base_output_dir / "commits" / commit_hash
-    create_commit_report(commit_output_dir, commit_hash, tag, sequences)
+    os.makedirs(commit_output_dir, exist_ok=True)
+    print(f"Creating commit report in: {commit_output_dir}")
+    
+    # Generate commit report
+    commit_report_path = create_commit_report(commit_output_dir, commit_hash, tag, sequences)
+    print(f"Created commit report: {commit_report_path}")
     
     # Create tag report if commit is tagged
     if tag:
         tag_output_dir = base_output_dir / "tags" / tag
-        create_tag_report(tag_output_dir, tag, sequences)
+        os.makedirs(tag_output_dir, exist_ok=True)
+        print(f"Creating tag report in: {tag_output_dir}")
+        
+        # Generate tag report
+        tag_report_path = create_tag_report(tag_output_dir, tag, sequences)
+        print(f"Created tag report: {tag_report_path}")
         
         # Copy commit report to tag directory for consistency
-        commit_report_path = commit_output_dir / "simple_commit_report.html"
         tag_commit_report_path = tag_output_dir / "simple_commit_report.html"
-        if os.path.exists(commit_report_path):
-            with open(commit_report_path, "r") as src, open(tag_commit_report_path, "w") as dst:
-                dst.write(src.read())
-            print(f"Copied commit report to tag directory: {tag_commit_report_path}")
+        print(f"Copying commit report to tag directory: {tag_commit_report_path}")
+        with open(commit_report_path, "r") as src, open(tag_commit_report_path, "w") as dst:
+            dst.write(src.read())
     
     print("Report generation complete!")
 
