@@ -1,10 +1,46 @@
 name: Update Directory Tree
 
+# ============================================================================
+# WHAT THIS WORKFLOW DOES:
+# ============================================================================
+# This workflow automatically generates and publishes a visual directory tree
+# of the repository structure. It runs whenever code is pushed to the main
+# branch and:
+#
+# 1. Generates a text-based directory tree using the `tree` command
+# 2. Publishes the tree to GitHub Pages (gh-pages branch)
+# 3. Makes it available at: https://<org>.github.io/<repo>/
+#
+# The tree is displayed as a simple HTML page showing all files and
+# directories in the repository, making it easy to browse the structure
+# without cloning the repo.
+#
+# ============================================================================
+# WHY THIS MATTERS:
+# ============================================================================
+# For sequence databases, transparency and documentation are important:
+#
+# ✅ Quick overview of all sequences without cloning
+# ✅ Easy reference for team members and reviewers
+# ✅ Shows repository organization at a glance
+# ✅ Helpful for onboarding new team members
+# ✅ Provides external visibility into what sequences exist
+#
+# This is particularly useful when:
+# - Teams need to quickly check what sequences are available
+# - External stakeholders need to review sequence inventory
+# - Documentation needs a current snapshot of repo structure
+# - Mission planners need to see available sequence files
+#
+# NOTE: This workflow requires GitHub Pages to be enabled in repository
+# settings (Settings → Pages → Source: gh-pages branch).
+# ============================================================================
+
 on:
   push:
     branches:
-      - main  # Or your default branch
-  workflow_dispatch: # Allows manual triggering
+      - main
+  workflow_dispatch: # Allows manual triggering from Actions tab
 
 permissions:
   contents: write  # Crucial for pushing back to the repo
@@ -17,6 +53,23 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0 # Fetches all history for all branches
+      
+      # Load configuration values
+      - name: Load Configuration
+        id: load-config
+        run: |
+          # Install PyYAML if needed
+          pip install pyyaml
+          
+          # Extract values from config
+          RUNNER_OS=$(python -c "import yaml; print(yaml.safe_load(open('.github/seqdb-config.yml')).get('environment', {}).get('runner_os', 'ubuntu-latest'))")
+          
+          # Set outputs
+          echo "runner_os=$RUNNER_OS" >> $GITHUB_OUTPUT
+          
+          # Log configuration
+          echo "Using configuration from .github/seqdb-config.yml"
+          echo "Runner OS: $RUNNER_OS"
 
       - name: Generate Tree
         run: |
