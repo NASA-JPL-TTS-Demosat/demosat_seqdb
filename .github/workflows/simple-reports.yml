@@ -82,6 +82,9 @@ jobs:
           COMMIT_HASH=$(git rev-parse HEAD)
           echo "commit_hash=$COMMIT_HASH" >> $GITHUB_OUTPUT
           
+          # Fetch all tags to ensure we have the latest
+          git fetch --tags --force
+          
           # Check if this is a tag push event
           if [[ "${{ github.event_name }}" == "push" && "${{ github.ref }}" == refs/tags/* ]]; then
             # For tag push events, use the tag from the ref
@@ -89,7 +92,8 @@ jobs:
             echo "Event is a tag push: $TAG"
           else
             # For PR events or other pushes, check if the commit has a tag
-            TAG=$(git describe --tags --exact-match $COMMIT_HASH 2>/dev/null || echo "")
+            # Use a more reliable method that doesn't require exact match
+            TAG=$(git tag --points-at $COMMIT_HASH | head -n 1)
             echo "Checking for tag on commit: $COMMIT_HASH"
           fi
           
@@ -103,12 +107,19 @@ jobs:
             echo "has_tag=false" >> $GITHUB_OUTPUT
           fi
           
+          # Double check with another method
+          ALL_TAGS=$(git tag --points-at $COMMIT_HASH)
+          echo "All tags pointing at this commit:"
+          echo "$ALL_TAGS"
+          
           # Create reports directory
           mkdir -p reports
           
           # Run the report generation script with tag information
           if [ -n "$TAG" ]; then
             echo "Running script with tag: $TAG"
+            # Export tag as environment variable as well (belt and suspenders approach)
+            export GITHUB_TAG="$TAG"
             python scripts/generate_simple_reports.py --output-dir reports --commit "$COMMIT_HASH" --tag "$TAG"
           else
             echo "Running script without tag"
