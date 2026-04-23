@@ -143,9 +143,21 @@ jobs:
           git config --global user.name "github-actions[bot]"
           git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
           
-          # Create/switch to gh-pages branch
+          # First, save the reports to a temporary location
+          mkdir -p /tmp/reports_backup
+          cp -r reports/* /tmp/reports_backup/
+          
+          # Create/switch to gh-pages branch with force to handle untracked files
           if git fetch origin gh-pages; then
-            git checkout gh-pages
+            # Use -f to force checkout even if there are untracked files that would be overwritten
+            git checkout -f gh-pages || {
+              echo "Force checkout failed, trying alternative approach"
+              # If force checkout fails, create a new branch
+              git checkout --orphan temp_gh_pages
+              git reset --hard
+              git commit --allow-empty -m "Creating clean gh-pages branch"
+              git checkout -f temp_gh_pages
+            }
           else
             git checkout --orphan gh-pages
             git rm -rf . || true
@@ -167,14 +179,33 @@ jobs:
             HAS_TAG="true"
           fi
           
-          # Create directory structure and copy reports
-          mkdir -p "commits/${COMMIT_HASH}"
-          cp -r reports/commits/${COMMIT_HASH}/* "commits/${COMMIT_HASH}/"
+          # Restore reports from temporary location
+          mkdir -p /tmp/to_publish
           
-          if [ "$HAS_TAG" = "true" ]; then
-            mkdir -p "tags/${TAG}"
-            cp -r reports/tags/${TAG}/* "tags/${TAG}/"
+          # Create directory structure for commits
+          mkdir -p "/tmp/to_publish/commits/${COMMIT_HASH}"
+          
+          # Copy commit reports (only copy if source exists)
+          if [ -d "/tmp/reports_backup/commits/${COMMIT_HASH}" ]; then
+            echo "Copying commit reports from backup"
+            cp -r /tmp/reports_backup/commits/${COMMIT_HASH}/* "/tmp/to_publish/commits/${COMMIT_HASH}/"
           fi
+          
+          # Handle tag reports if this commit has a tag
+          if [ "$HAS_TAG" = "true" ]; then
+            echo "Processing tag: $TAG"
+            mkdir -p "/tmp/to_publish/tags/${TAG}"
+            
+            # Copy tag reports if they exist
+            if [ -d "/tmp/reports_backup/tags/${TAG}" ]; then
+              echo "Copying tag reports from backup"
+              cp -r /tmp/reports_backup/tags/${TAG}/* "/tmp/to_publish/tags/${TAG}/"
+            fi
+          fi
+          
+          # Now copy everything from temp to the current directory
+          echo "Publishing reports to gh-pages"
+          cp -r /tmp/to_publish/* .
           
           # Update index page with links to reports
           cat > index.html <<EOF
