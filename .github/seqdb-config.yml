@@ -1,0 +1,132 @@
+# Sequence Database Configuration
+# This file controls the approval and validation requirements for your sequence database
+
+# ============================================================================
+# Environment and Runtime Configuration
+# ============================================================================
+# These settings control the runtime environment for workflows
+# Modify these to match your project's requirements
+environment:
+  # Python version to use for validation and scripts
+  python_version: "3.11"
+  
+  # Node.js version (if needed for report generation)
+  node_version: "18"
+  
+  # Runner OS to use for GitHub Actions
+  runner_os: "ubuntu-latest"
+  
+  # Dependencies installation command (customize if needed)
+  install_dependencies_command: "pip install -r requirements.txt"
+  
+  # Timeout settings (in minutes)
+  timeouts:
+    validation: 30
+    report_generation: 10
+
+# Tag format requirements
+tag_format:
+  # Regular expression that tags must match
+  # Example formats:
+  #   - "v2026.110.1" (year.sol.iteration)
+  #   - "v1.2.3" (semantic versioning)
+  #   - "CAM-2026-110-001" (custom mission format)
+  pattern: "^v[0-9]{4}\\.[0-9]{1,3}\\.[0-9]+$"
+  
+  # Human-readable description shown in error messages
+  description: "vYYYY.SOL.N format (e.g., v2026.110.1)"
+  
+  # Examples of valid tags (for documentation)
+  examples:
+    - "v2026.110.1"
+    - "v2026.001.2"
+    - "v2027.365.15"
+
+# Required approval teams
+# Each team listed here MUST have at least one approval on the PR
+required_approval_teams:
+  - name: "mission-management"
+    display_name: "Mission Management"
+    description: "Project Manager or Mission Manager approval"
+    
+  - name: "mission-assurance"
+    display_name: "Mission Assurance"
+    description: "MA/QA approval for flight readiness"
+    
+  - name: "operations-leads"
+    display_name: "Operations Leads"
+    description: "Operations/Planning lead approval"
+
+# Optional: Individual users who can approve (use sparingly)
+# This is useful for small teams or testing, but team-based is preferred
+# required_individual_approvers:
+#   - username: "flight-director"
+#     display_name: "Flight Director"
+
+# Branch protection settings
+branches:
+  protected:
+    - "main"
+    - "master"
+  
+  # Branches that require tag+approval workflow
+  require_tag_and_approval:
+    - "main"
+    - "master"
+
+# Report generation settings
+reports:
+  # Enable automatic report generation
+  enabled: true
+  
+  # Where to store generated reports
+  artifact_name: "sequence-validation-reports"
+  
+  # Report formats to generate
+  formats:
+    - "html"
+    - "pdf"
+    - "json"
+  
+  # Whether reports should be committed back to the repo
+  commit_to_repo: true
+  commit_branch: "gh-pages"
+  commit_path: "reports/"
+
+# Simulation settings (if applicable)
+simulation:
+  enabled: true
+  timeout_minutes: 30
+  
+  # Command to run simulation (customize for your mission)
+  # This should be a script in your repo that validates sequences
+  command: "python scripts/validate_sequences.py"
+  
+  # Require simulation to pass before merge
+  required_for_merge: true
+
+# Notification settings
+notifications:
+  # Slack webhook for notifications (optional)
+  slack_webhook_secret: "SLACK_WEBHOOK_URL"
+  
+  # Notify on specific events
+  notify_on:
+    - "pr_opened"
+    - "tag_missing"
+    - "approval_complete"
+    - "merge_ready"
+
+# Strict mode settings
+strict_mode:
+  # Require PR to be up-to-date with base branch
+  require_up_to_date: true
+  
+  # Require all commits in PR to be signed
+  require_signed_commits: false
+  
+  # Require linear history (no merge commits in PR)
+  require_linear_history: false
+  
+  # Block force pushes to PR after approval received
+  block_force_push_after_approval: true
